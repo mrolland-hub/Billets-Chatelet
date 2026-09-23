@@ -4,46 +4,60 @@ import fitz  # PyMuPDF
 from PIL import Image
 import pytesseract
 
-ETAGES = [
+# Libellés connus servant uniquement de secours.
+ZONES_CONNNUES = [
     "Orchestre",
     "Corbeille",
-    "Balcon",
+    "1er Balcon",
+    "2ème Balcon",
     "Amphithéâtre Bas",
-    "Amphithéâtre Haut"
+    "Amphithéâtre Haut",
 ]
 
-def _normaliser_etage(texte):
-    t = texte.lower().replace("é", "e").replace("è", "e")
 
-    if "amphitheatre bas" in t:
-        return "Amphithéâtre Bas"
+def _zone_exacte(texte):
+    """
+    Récupère le libellé exact de la zone imprimé sur le billet.
+    Exemple :
+        Corbeille
+        1er Balcon
+        2ème Balcon
+        Orchestre
+        Amphithéâtre Bas
+    """
 
-    if "amphitheatre haut" in t:
-        return "Amphithéâtre Haut"
+    lignes = [l.strip() for l in texte.splitlines() if l.strip()]
 
-    if "orchestre" in t:
-        return "Orchestre"
+    # Sur les billets SecuTix, le nom de la zone se trouve
+    # juste après la catégorie (Catégorie 1, GRATUIT, etc.).
+    for i, ligne in enumerate(lignes):
+        if "catégorie" in ligne.lower() or "gratuit" in ligne.lower():
+            if i + 1 < len(lignes):
+                return lignes[i + 1]
 
-    if "corbeille" in t:
-        return "Corbeille"
+    # Secours : recherche de libellés connus
+    t = texte.lower()
+    t = (t.replace("é", "e")
+           .replace("è", "e")
+           .replace("ê", "e"))
 
-    if "balcon" in t:
-        return "Balcon"
+    for zone in ZONES_CONNNUES:
+        z = zone.lower().replace("é", "e").replace("è", "e")
+        if z in t:
+            return zone
 
     return "Inconnu"
 
 
 def _extraire(texte):
-    etage = _normaliser_etage(texte)
+    zone = _zone_exacte(texte)
 
-    # Cas normal SecuTix
     m = re.search(
         r"Porte\s+Rang\s+Num[ée]ro\s+(\d+)\s+([A-Z])\s+(\d+)",
         texte,
         re.IGNORECASE,
     )
 
-    # Cas OCR
     if not m:
         m = re.search(
             r"(\d+)\s+([A-Z])\s+(\d+)\s+[- ]*CONTROLE",
@@ -57,7 +71,7 @@ def _extraire(texte):
     porte, rang, place = m.groups()
 
     return {
-        "etage": etage,
+        "zone": zone,
         "porte": porte,
         "rang": rang,
         "place": place,
@@ -68,14 +82,13 @@ def lire_billet(pdf_path):
     doc = fitz.open(pdf_path)
     page = doc[0]
 
-    # Lecture directe du texte
     texte = page.get_text("text")
     info = _extraire(texte)
 
     if info:
         return info
 
-    # Secours OCR
+    # OCR uniquement en secours
     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
     image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
