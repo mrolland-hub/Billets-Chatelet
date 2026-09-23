@@ -1,77 +1,230 @@
 import re
+import unicodedata
 import fitz  # PyMuPDF
 
 
-def _extraire_zone(page):
+ETAGES = [
+    "Orchestre",
+    "Corbeille",
+    "2ème balcon",
+    "1er balcon",
+    "Amphithéâtre Bas",
+    "Amphithéâtre Haut",
+]
+
+
+def normaliser(texte):
+    """Normalise un texte extrait du PDF."""
+    texte = texte.replace("\xa0", " ")
+    texte = " ".join(texte.split())
+    return texte.strip()
+
+
+def sans_accents(texte):
+    """Supprime les accents pour faciliter les comparaisons."""
+    return "".join(
+        c
+        for c in unicodedata.normalize("NFD", texte)
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+def trouver_etage(texte):
     """
-    Extrait la zone (Corbeille, 1er Balcon, etc.) en utilisant
-    la position des blocs de texte sur la page.
+    Cherche explicitement l'un des six étages possibles.
     """
 
-    blocs = page.get_text("blocks")
+    texte_normalise = sans_accents(texte).lower()
 
-    candidats = []
+    # On teste les plus longs en premier.
+    etages = sorted(ETAGES, key=len, reverse=True)
 
-    for bloc in blocs:
-        x0, y0, x1, y1, texte = bloc[:5]
+    for etage in etages:
+        recherche = sans_accents(etage).lower()
 
-        texte = " ".join(texte.split()).strip()
+        if recherche in texte_normalise:
+            return etage
 
-        if not texte:
+    raise ValueError("Étage introuvable.")
+
+
+def trouver_place(page):
+    """
+    Recherche la structure :
+
+        Porte        Rang        Numéro
+        12           A           66
+
+    et retourne :
+        porte = 12
+        rang = A
+        place = 66
+    """
+
+    texte = page.get_text("text")
+
+    lignes = [
+        normaliser(ligne)
+        for ligne in texte.splitlines()
+        if normaliser(ligne)
+    ]
+
+    # ---------------------------------------------------------
+    # CAS 1 :
+    #
+    # Porte Rang Numéro
+    # 12 A 66
+    # ---------------------------------------------------------
+
+    for i, ligne in enumerate(lignes):
+
+        ligne_test = sans_accents(ligne).lower()
+
+        if (
+            "porte" in ligne_test
+            and "rang" in ligne_test
+            and "numero" in ligne_test
+        ):
+
+            # Cherche la ligne de valeurs juste après.
+            for j in range(i + 1, min(i + 4, len(lignes))):
+
+                valeurs = lignes[j]
+
+                match = re.fullmatch(
+                    r"(\d+)\s+([A-Za-z])\s+(\d+)",
+                    valeurs,
+                )
+
+                if match:
+                    porte, rang, place = match.groups()
+
+                    return porte, rang.upper(), place
+
+    # ---------------------------------------------------------
+    # CAS 2 :
+    #
+    # PyMuPDF peut avoir séparé les éléments différemment.
+    # On recherche donc n'importe où une séquence :
+    #
+    # nombre + lettre + nombre
+    #
+    # à proximité de "Porte / Rang / Numéro".
+    # ---------------------------------------------------------
+
+    for i, ligne in enumerate(lignes):
+
+        ligne_test = sans_accents(ligne).lower()
+
+        if (
+            "porte" in ligne_test
+            or "rang" in ligne_test
+            or "numero" in ligne_test
+        ):
+
+            for j in range(i + 1, min(i + 5, len(lignes))):
+
+                valeurs = lignes[j]
+
+                match = re.fullmatch(
+                    r"(\d+)\s+([A-Za-z])\s+(\d+)",
+                    valeurs,
+                )
+
+                if match:
+                    porte, rang, place = match.groups()
+
+                    return porte, rang.upper(), place
+
+    # ---------------------------------------------------------
+    # CAS 3 :
+    #
+    # Les valeurs peuvent être extraites chacune sur une ligne :
+    #
+    # Porte
+    # Rang
+    # Numéro
+    # 12
+    # A
+    # 66
+    # ---------------------------------------------------------
+
+    for i, ligne in enumerate(lignes):
+
+        if sans_accents(ligne).lower() != "porte":
             continue
 
-        # Bande verticale où apparaît la zone sur les billets SecuTix.
-        if 150 <= y0 <= 280:
+        # Cherche Rang puis Numéro dans les lignes suivantes.
+        rang_index = None
+        numero_index = None
 
-            # On élimine les textes techniques.
-            if texte.lower().startswith("porte rang"):
-                continue
+        for j in range(i + 1, min(i + 8, len(lignes))):
 
-            if texte.lower() == "grande salle":
-                continue
+            test = sans_accents(lignes[j]).lower()
 
-            if "catégorie" in texte.lower():
-                continue
+            if test == "rang" and rang_index is None:
+                rang_index = j
 
-            if "gratuit" in texte.lower():
-                continue
+            if test == "numero" and numero_index is None:
+                numero_index = j
 
-            candidats.append((y0, texte))
+        if rang_index is None or numero_index is None:
+            continue
 
-    if not candidats:
-        raise ValueError("Zone introuvable.")
+        # Les valeurs doivent apparaître après les intitulés.
+        valeurs = []
 
-    # On prend le candidat le plus bas dans cette bande,
-    # ce qui correspond au libellé de zone.
-    candidats.sort(key=lambda c: c[0])
+        debut = max(rang_index, numero_index) + 1
 
-    return candidats[-1][1]
+        for j in range(debut, min(debut + 8, len(lignes))):
+
+            valeur = lignes[j]
+
+            if re.fullmatch(r"\d+", valeur):
+                valeurs.append(valeur)
+
+            elif re.fullmatch(r"[A-Za-z]", valeur):
+                valeurs.append(valeur.upper())
+
+        if len(valeurs) >= 3:
+            return valeurs[0], valeurs[1], valeurs[2]
+
+    raise ValueError("Porte/Rang/Place introuvable.")
 
 
 def lire_billet(pdf_path):
+
     doc = fitz.open(pdf_path)
-    page = doc[0]
 
-    texte = page.get_text("text")
-    zone = _extraire_zone(page)
+    try:
+        if len(doc) == 0:
+            raise ValueError("PDF vide.")
 
-    m = re.search(
-        r"Porte\s+Rang\s+Num[ée]ro\s+(\d+)\s+([A-Z])\s+(\d+)",
-        texte,
-        re.IGNORECASE,
-    )
+        page = doc[0]
 
-    if not m:
+        texte = page.get_text("text")
+
+        if not texte.strip():
+            raise ValueError("Aucun texte détecté dans le PDF.")
+
+        # -----------------------------------------------------
+        # ÉTAGE
+        # -----------------------------------------------------
+
+        zone = trouver_etage(texte)
+
+        # -----------------------------------------------------
+        # PORTE / RANG / PLACE
+        # -----------------------------------------------------
+
+        porte, rang, place = trouver_place(page)
+
+        return {
+            "zone": zone,
+            "porte": porte,
+            "rang": rang,
+            "place": place,
+        }
+
+    finally:
         doc.close()
-        raise ValueError("Porte/Rang/Place introuvable.")
-
-    porte, rang, place = m.groups()
-
-    doc.close()
-
-    return {
-        "zone": zone,
-        "porte": porte,
-        "rang": rang,
-        "place": place,
-    }
