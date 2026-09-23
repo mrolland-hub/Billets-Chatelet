@@ -26,7 +26,7 @@ python -m PyInstaller ^
     --onefile ^
     --windowed ^
     --name LANCER_RENOMMAGE ^
-    src\main.py
+    main.py
 
 echo.
 echo ==========================================
