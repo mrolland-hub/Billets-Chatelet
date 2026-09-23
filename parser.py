@@ -1,62 +1,51 @@
 import re
 import fitz  # PyMuPDF
 
-IGNORER = {
-    "grande salle",
-    "contrôle",
-    "controle",
-    "catégorie",
-    "gratuit",
-    "porte rang numéro",
-    "porte rang numero",
-}
-
-
-def _est_a_ignorer(texte):
-    t = texte.lower().strip()
-
-    if not t:
-        return True
-
-    for mot in IGNORER:
-        if mot in t:
-            return True
-
-    if t.startswith("dossier :"):
-        return True
-
-    if t.startswith("édité le") or t.startswith("edite le"):
-        return True
-
-    if t.startswith("numéro fiscal") or t.startswith("numero fiscal"):
-        return True
-
-    return False
-
 
 def _extraire_zone(page):
     """
-    Détecte la zone en utilisant la position des blocs de texte.
+    Extrait la zone (Corbeille, 1er Balcon, etc.) en utilisant
+    la position des blocs de texte sur la page.
     """
 
     blocs = page.get_text("blocks")
-    blocs = sorted(blocs, key=lambda b: (b[1], b[0]))  # haut -> bas
 
-    # Cherche le bloc "Dossier :"
-    for i, bloc in enumerate(blocs):
-        texte = bloc[4].strip()
+    candidats = []
 
-        if texte.lower().startswith("dossier :"):
+    for bloc in blocs:
+        x0, y0, x1, y1, texte = bloc[:5]
 
-            # Remonte jusqu'au premier bloc significatif
-            for j in range(i - 1, -1, -1):
+        texte = " ".join(texte.split()).strip()
 
-                candidat = blocs[j][4].strip()
+        if not texte:
+            continue
 
-                if not _est_a_ignorer(candidat):
-                    return candidat
+        # Bande verticale où apparaît la zone sur les billets SecuTix.
+        if 150 <= y0 <= 280:
 
-    raise ValueError("Zone introuvable.")
+            # On élimine les textes techniques.
+            if texte.lower().startswith("porte rang"):
+                continue
+
+            if texte.lower() == "grande salle":
+                continue
+
+            if "catégorie" in texte.lower():
+                continue
+
+            if "gratuit" in texte.lower():
+                continue
+
+            candidats.append((y0, texte))
+
+    if not candidats:
+        raise ValueError("Zone introuvable.")
+
+    # On prend le candidat le plus bas dans cette bande,
+    # ce qui correspond au libellé de zone.
+    candidats.sort(key=lambda c: c[0])
+
+    return candidats[-1][1]
 
 
 def lire_billet(pdf_path):
@@ -73,6 +62,7 @@ def lire_billet(pdf_path):
     )
 
     if not m:
+        doc.close()
         raise ValueError("Porte/Rang/Place introuvable.")
 
     porte, rang, place = m.groups()
