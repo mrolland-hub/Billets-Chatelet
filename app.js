@@ -45,7 +45,8 @@ function trouverEtage(mots) {
         .map(mot => mot.texte)
         .join(" ");
 
-    const texteNormalise = normaliser(texte).toLowerCase();
+    const texteNormalise =
+        normaliser(texte).toLowerCase();
 
     for (const etage of ETAGES) {
 
@@ -85,7 +86,6 @@ function trouverValeurSousLabel(
 
     for (const mot of mots) {
 
-        // Le mot doit être situé sous le label.
         if (mot.y >= label.y) {
             continue;
         }
@@ -93,7 +93,6 @@ function trouverValeurSousLabel(
         const distanceY =
             label.y - mot.y;
 
-        // Trop éloigné verticalement.
         if (distanceY > 100) {
             continue;
         }
@@ -101,7 +100,6 @@ function trouverValeurSousLabel(
         const distanceX =
             Math.abs(mot.x - label.x);
 
-        // Trop éloigné horizontalement.
         if (distanceX > 100) {
             continue;
         }
@@ -182,18 +180,6 @@ function extraireInformations(mots) {
     }
 
 
-    /*
-     * IMPORTANT :
-     *
-     * PDF.js utilise un axe Y qui augmente
-     * vers le haut dans les coordonnées
-     * du texte.
-     *
-     * Les valeurs du billet sont donc
-     * recherchées sous les intitulés.
-     */
-
-
     const porte =
         trouverValeurSousLabel(
             mots,
@@ -217,21 +203,15 @@ function extraireInformations(mots) {
 
 
     if (!porte) {
-        throw new Error(
-            "Porte introuvable."
-        );
+        throw new Error("Porte introuvable.");
     }
 
     if (!rang) {
-        throw new Error(
-            "Rang introuvable."
-        );
+        throw new Error("Rang introuvable.");
     }
 
     if (!place) {
-        throw new Error(
-            "Place introuvable."
-        );
+        throw new Error("Place introuvable.");
     }
 
 
@@ -241,6 +221,44 @@ function extraireInformations(mots) {
         rang: rang.toUpperCase(),
         place
     };
+}
+
+
+function nomSecurise(nom) {
+
+    return nom.replace(
+        /[<>:"/\\|?*]/g,
+        "_"
+    );
+}
+
+
+async function analyserPDF(fichier) {
+
+    const donnees =
+        await fichier.arrayBuffer();
+
+    const pdf =
+        await pdfjsLib.getDocument({
+            data: donnees
+        }).promise;
+
+    const page =
+        await pdf.getPage(1);
+
+    const contenu =
+        await page.getTextContent();
+
+    const mots =
+        contenu.items
+            .map(item => ({
+                texte: normaliser(item.str),
+                x: item.transform[4],
+                y: item.transform[5]
+            }))
+            .filter(mot => mot.texte);
+
+    return extraireInformations(mots);
 }
 
 
@@ -257,90 +275,166 @@ traiter.addEventListener(
         }
 
 
-        const fichier =
-            fichiers.files[0];
+        traiter.disabled = true;
 
+        const total =
+            fichiers.files.length;
 
-        resultat.textContent =
-            "Analyse du billet en cours...";
+        let nbOK = 0;
+        let nbErreurs = 0;
+
+        const erreurs = [];
 
 
         try {
 
-            const donnees =
-                await fichier.arrayBuffer();
+            const zip = new JSZip();
 
 
-            const pdf =
-                await pdfjsLib.getDocument({
-                    data: donnees
-                }).promise;
+            for (
+                let i = 0;
+                i < total;
+                i++
+            ) {
+
+                const fichier =
+                    fichiers.files[i];
 
 
-            const page =
-                await pdf.getPage(1);
+                resultat.innerHTML =
+                    `Analyse du billet ${i + 1} / ${total}<br>` +
+                    `<strong>${fichier.name}</strong>`;
 
 
-            const contenu =
-                await page.getTextContent();
+                try {
+
+                    const infos =
+                        await analyserPDF(fichier);
 
 
-            const mots =
-                contenu.items
-                    .map(item => ({
+                    if (!infos.etage) {
+                        throw new Error(
+                            "Étage introuvable."
+                        );
+                    }
 
-                        texte: normaliser(
-                            item.str
-                        ),
 
-                        x: item.transform[4],
+                    const dossier =
+                        `${nomSecurise(infos.etage)}/` +
+                        `Rang ${nomSecurise(infos.rang)}/`;
 
-                        y: item.transform[5]
 
-                    }))
-                    .filter(
-                        mot => mot.texte
+                    const nom =
+                        `${nomSecurise(infos.etage)}` +
+                        `_Porte_${nomSecurise(infos.porte)}` +
+                        `_Rang_${nomSecurise(infos.rang)}` +
+                        `_Place_${nomSecurise(infos.place)}` +
+                        `.pdf`;
+
+
+                    const chemin =
+                        dossier + nom;
+
+
+                    const donnees =
+                        await fichier.arrayBuffer();
+
+
+                    zip.file(
+                        chemin,
+                        donnees
                     );
 
 
-            console.log(
-                "Mots détectés :",
-                mots
-            );
+                    nbOK++;
+
+                }
+                catch (erreur) {
+
+                    nbErreurs++;
+
+                    erreurs.push(
+                        `${fichier.name} : ${erreur.message}`
+                    );
+                }
+            }
 
 
-            const infos =
-                extraireInformations(
-                    mots
+            resultat.innerHTML =
+                `Traitement terminé.<br><br>` +
+                `<strong>${nbOK}</strong> billet(s) traité(s).<br>` +
+                `<strong>${nbErreurs}</strong> erreur(s).`;
+
+
+            if (erreurs.length > 0) {
+
+                zip.file(
+                    "erreurs.txt",
+                    erreurs.join("\n")
+                );
+            }
+
+
+            if (nbOK > 0) {
+
+                resultat.innerHTML +=
+                    "<br><br>Création du fichier ZIP...";
+
+
+                const contenuZIP =
+                    await zip.generateAsync({
+                        type: "blob"
+                    });
+
+
+                const url =
+                    URL.createObjectURL(
+                        contenuZIP
+                    );
+
+
+                const lien =
+                    document.createElement("a");
+
+                lien.href = url;
+
+                lien.download =
+                    "Billets-renommes.zip";
+
+                lien.textContent =
+                    "Télécharger le ZIP";
+
+
+                lien.style.display =
+                    "inline-block";
+
+                lien.style.marginTop =
+                    "15px";
+
+                lien.style.padding =
+                    "12px 20px";
+
+                lien.style.background =
+                    "#222";
+
+                lien.style.color =
+                    "white";
+
+                lien.style.textDecoration =
+                    "none";
+
+                lien.style.borderRadius =
+                    "6px";
+
+
+                resultat.appendChild(
+                    document.createElement("br")
                 );
 
-
-            resultat.innerHTML = `
-
-                <strong>Billet analysé</strong>
-
-                <br><br>
-
-                Étage :
-                <strong>${infos.etage}</strong>
-
-                <br>
-
-                Porte :
-                <strong>${infos.porte}</strong>
-
-                <br>
-
-                Rang :
-                <strong>${infos.rang}</strong>
-
-                <br>
-
-                Place :
-                <strong>${infos.place}</strong>
-
-            `;
-
+                resultat.appendChild(
+                    lien
+                );
+            }
 
         }
         catch (erreur) {
@@ -348,10 +442,11 @@ traiter.addEventListener(
             console.error(erreur);
 
             resultat.innerHTML =
-
                 "<strong>Erreur :</strong><br>" +
                 erreur.message;
         }
 
+
+        traiter.disabled = false;
     }
 );
