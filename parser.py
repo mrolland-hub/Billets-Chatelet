@@ -1,229 +1,182 @@
 import re
-import unicodedata
 import fitz  # PyMuPDF
 
 
 ETAGES = [
     "Orchestre",
     "Corbeille",
-    "2ème balcon",
     "1er balcon",
+    "2ème balcon",
     "Amphithéâtre Bas",
     "Amphithéâtre Haut",
 ]
 
 
-def normaliser(texte):
-    """Normalise un texte extrait du PDF."""
+def _normaliser(texte):
     texte = texte.replace("\xa0", " ")
-    texte = " ".join(texte.split())
-    return texte.strip()
+    return " ".join(texte.split()).strip()
 
 
-def sans_accents(texte):
-    """Supprime les accents pour faciliter les comparaisons."""
-    return "".join(
-        c
-        for c in unicodedata.normalize("NFD", texte)
-        if unicodedata.category(c) != "Mn"
-    )
-
-
-def trouver_etage(texte):
+def _extraire_zone(page):
     """
-    Cherche explicitement l'un des six étages possibles.
+    Recherche l'un des six étages possibles.
     """
 
-    texte_normalise = sans_accents(texte).lower()
+    texte = page.get_text("text")
 
-    # On teste les plus longs en premier.
-    etages = sorted(ETAGES, key=len, reverse=True)
-
-    for etage in etages:
-        recherche = sans_accents(etage).lower()
-
-        if recherche in texte_normalise:
+    for etage in ETAGES:
+        if re.search(
+            rf"\b{re.escape(etage)}\b",
+            texte,
+            re.IGNORECASE
+        ):
             return etage
 
     raise ValueError("Étage introuvable.")
 
 
-def trouver_place(page):
+def _extraire_porte_rang_place(page):
     """
-    Recherche la structure :
+    Recherche les trois valeurs sous les intitulés :
 
-        Porte        Rang        Numéro
-        12           A           66
+        Porte    Rang    Numéro
+        11       A       41
 
-    et retourne :
-        porte = 12
+    Résultat :
+        porte = 11
         rang = A
-        place = 66
+        place = 41
     """
 
     texte = page.get_text("text")
 
     lignes = [
-        normaliser(ligne)
+        _normaliser(ligne)
         for ligne in texte.splitlines()
-        if normaliser(ligne)
+        if _normaliser(ligne)
     ]
 
     # ---------------------------------------------------------
-    # CAS 1 :
-    #
-    # Porte Rang Numéro
-    # 12 A 66
+    # CAS PRINCIPAL
+    # ---------------------------------------------------------
+    # On cherche une ligne contenant Porte / Rang / Numéro,
+    # puis les lignes suivantes.
     # ---------------------------------------------------------
 
     for i, ligne in enumerate(lignes):
 
-        ligne_test = sans_accents(ligne).lower()
+        ligne_min = ligne.lower()
 
         if (
-            "porte" in ligne_test
-            and "rang" in ligne_test
-            and "numero" in ligne_test
+            "porte" in ligne_min
+            and "rang" in ligne_min
+            and "num" in ligne_min
         ):
 
-            # Cherche la ligne de valeurs juste après.
-            for j in range(i + 1, min(i + 4, len(lignes))):
+            # On examine les 5 lignes suivantes.
+            for j in range(i + 1, min(i + 6, len(lignes))):
 
                 valeurs = lignes[j]
 
-                match = re.fullmatch(
+                # Cas idéal : "11 A 41"
+                m = re.fullmatch(
                     r"(\d+)\s+([A-Za-z])\s+(\d+)",
-                    valeurs,
+                    valeurs
                 )
 
-                if match:
-                    porte, rang, place = match.groups()
+                if m:
+                    porte, rang, place = m.groups()
 
-                    return porte, rang.upper(), place
-
-    # ---------------------------------------------------------
-    # CAS 2 :
-    #
-    # PyMuPDF peut avoir séparé les éléments différemment.
-    # On recherche donc n'importe où une séquence :
-    #
-    # nombre + lettre + nombre
-    #
-    # à proximité de "Porte / Rang / Numéro".
-    # ---------------------------------------------------------
-
-    for i, ligne in enumerate(lignes):
-
-        ligne_test = sans_accents(ligne).lower()
-
-        if (
-            "porte" in ligne_test
-            or "rang" in ligne_test
-            or "numero" in ligne_test
-        ):
-
-            for j in range(i + 1, min(i + 5, len(lignes))):
-
-                valeurs = lignes[j]
-
-                match = re.fullmatch(
-                    r"(\d+)\s+([A-Za-z])\s+(\d+)",
-                    valeurs,
-                )
-
-                if match:
-                    porte, rang, place = match.groups()
-
-                    return porte, rang.upper(), place
+                    return {
+                        "porte": porte,
+                        "rang": rang.upper(),
+                        "place": place,
+                    }
 
     # ---------------------------------------------------------
-    # CAS 3 :
+    # CAS où PyMuPDF sépare les valeurs
+    # ---------------------------------------------------------
     #
-    # Les valeurs peuvent être extraites chacune sur une ligne :
+    # Exemple :
     #
     # Porte
     # Rang
     # Numéro
-    # 12
+    # 11
     # A
-    # 66
+    # 41
+    #
     # ---------------------------------------------------------
 
     for i, ligne in enumerate(lignes):
 
-        if sans_accents(ligne).lower() != "porte":
-            continue
+        if ligne.lower() == "porte":
 
-        # Cherche Rang puis Numéro dans les lignes suivantes.
-        rang_index = None
-        numero_index = None
+            for j in range(i + 1, min(i + 6, len(lignes))):
 
-        for j in range(i + 1, min(i + 8, len(lignes))):
+                if lignes[j].lower() == "rang":
 
-            test = sans_accents(lignes[j]).lower()
+                    for k in range(j + 1, min(j + 6, len(lignes))):
 
-            if test == "rang" and rang_index is None:
-                rang_index = j
+                        if "num" in lignes[k].lower():
 
-            if test == "numero" and numero_index is None:
-                numero_index = j
+                            valeurs = []
 
-        if rang_index is None or numero_index is None:
-            continue
+                            for n in range(
+                                k + 1,
+                                min(k + 7, len(lignes))
+                            ):
+                                valeur = lignes[n]
 
-        # Les valeurs doivent apparaître après les intitulés.
-        valeurs = []
+                                if re.fullmatch(r"\d+", valeur):
+                                    valeurs.append(valeur)
 
-        debut = max(rang_index, numero_index) + 1
+                                elif re.fullmatch(
+                                    r"[A-Za-z]",
+                                    valeur
+                                ):
+                                    valeurs.append(
+                                        valeur.upper()
+                                    )
 
-        for j in range(debut, min(debut + 8, len(lignes))):
+                            if len(valeurs) >= 3:
 
-            valeur = lignes[j]
+                                # On vérifie bien :
+                                # nombre / lettre / nombre
 
-            if re.fullmatch(r"\d+", valeur):
-                valeurs.append(valeur)
-
-            elif re.fullmatch(r"[A-Za-z]", valeur):
-                valeurs.append(valeur.upper())
-
-        if len(valeurs) >= 3:
-            return valeurs[0], valeurs[1], valeurs[2]
+                                if (
+                                    re.fullmatch(r"\d+", valeurs[0])
+                                    and
+                                    re.fullmatch(
+                                        r"[A-Z]",
+                                        valeurs[1]
+                                    )
+                                    and
+                                    re.fullmatch(r"\d+", valeurs[2])
+                                ):
+                                    return {
+                                        "porte": valeurs[0],
+                                        "rang": valeurs[1],
+                                        "place": valeurs[2],
+                                    }
 
     raise ValueError("Porte/Rang/Place introuvable.")
 
 
 def lire_billet(pdf_path):
-
     doc = fitz.open(pdf_path)
 
     try:
-        if len(doc) == 0:
-            raise ValueError("PDF vide.")
-
         page = doc[0]
 
-        texte = page.get_text("text")
-
-        if not texte.strip():
-            raise ValueError("Aucun texte détecté dans le PDF.")
-
-        # -----------------------------------------------------
-        # ÉTAGE
-        # -----------------------------------------------------
-
-        zone = trouver_etage(texte)
-
-        # -----------------------------------------------------
-        # PORTE / RANG / PLACE
-        # -----------------------------------------------------
-
-        porte, rang, place = trouver_place(page)
+        zone = _extraire_zone(page)
+        infos = _extraire_porte_rang_place(page)
 
         return {
             "zone": zone,
-            "porte": porte,
-            "rang": rang,
-            "place": place,
+            "porte": infos["porte"],
+            "rang": infos["rang"],
+            "place": infos["place"],
         }
 
     finally:
