@@ -59,15 +59,18 @@ class Fenetre(QWidget):
 
         self.bouton.clicked.connect(self.choisir_dossier)
 
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            url = event.mimeData().urls()[0]
-            if Path(url.toLocalFile()).is_dir():
-                event.acceptProposedAction()
+   def dragEnterEvent(self, event):
+    if event.mimeData().hasUrls():
+        chemin = Path(event.mimeData().urls()[0].toLocalFile())
+        if chemin.is_dir():
+            event.acceptProposedAction()
 
-    def dropEvent(self, event):
-        dossier = Path(event.mimeData().urls()[0].toLocalFile())
-        self.lancer(dossier)
+
+def dropEvent(self, event):
+    chemin = Path(event.mimeData().urls()[0].toLocalFile())
+
+    if chemin.is_dir():
+        self.lancer(chemin)
 
     def choisir_dossier(self):
         dossier = QFileDialog.getExistingDirectory(
