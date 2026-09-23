@@ -1,1 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <title>Billets Châtelet</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 60px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        .description {
+            color: #555;
+            margin-bottom: 30px;
+        }
+
+        .zone {
+            border: 2px dashed #aaa;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #resultat {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f5f5f5;
+            min-height: 30px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Renommage des billets</h1>
+
+    <div class="description">
+        Sélectionnez les fichiers PDF des billets à traiter.
+        Les fichiers seront traités directement sur votre ordinateur.
+    </div>
+
+    <div class="zone">
+
+        <input
+            type="file"
+            id="fichiers"
+            accept=".pdf"
+            multiple
+        >
+
+        <p id="nombre">
+            Aucun fichier sélectionné.
+        </p>
+
+    </div>
+
+    <button id="traiter">
+        Traiter les billets
+    </button>
+
+    <div id="resultat">
+        En attente...
+    </div>
+
+    <script>
+        const fichiers = document.getElementById("fichiers");
+        const nombre = document.getElementById("nombre");
+        const traiter = document.getElementById("traiter");
+        const resultat = document.getElementById("resultat");
+
+        fichiers.addEventListener("change", () => {
+
+            const total = fichiers.files.length;
+
+            if (total === 0) {
+                nombre.textContent = "Aucun fichier sélectionné.";
+            }
+            else if (total === 1) {
+                nombre.textContent = "1 fichier sélectionné.";
+            }
+            else {
+                nombre.textContent =
+                    total + " fichiers sélectionnés.";
+            }
+        });
+
+        traiter.addEventListener("click", () => {
+
+            if (fichiers.files.length === 0) {
+                resultat.textContent =
+                    "Veuillez sélectionner au moins un PDF.";
+                return;
+            }
+
+            resultat.textContent =
+                "Les fichiers seront traités ici.";
+        });
+    </script>
+
+</body>
+</html>
