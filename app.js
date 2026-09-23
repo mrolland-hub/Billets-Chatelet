@@ -106,6 +106,8 @@ function trouverValeurSousLabel(
 
         const texte = mot.texte;
 
+
+        // Porte : nombres uniquement
         if (
             type === "nombre" &&
             !/^\d+$/.test(texte)
@@ -113,12 +115,27 @@ function trouverValeurSousLabel(
             continue;
         }
 
+
+        // Rang : une ou plusieurs lettres
+        // Exemples : A, B, LG
         if (
-            type === "lettre" &&
-            !/^[A-Za-z]$/.test(texte)
+            type === "rang" &&
+            !/^[A-Za-z]+$/.test(texte)
         ) {
             continue;
         }
+
+
+        // Place : nombre éventuellement suivi
+        // d'une lettre
+        // Exemples : 16, 16A
+        if (
+            type === "place" &&
+            !/^\d+[A-Za-z]?$/.test(texte)
+        ) {
+            continue;
+        }
+
 
         const score =
             distanceY +
@@ -130,13 +147,16 @@ function trouverValeurSousLabel(
         });
     }
 
+
     if (candidats.length === 0) {
         return null;
     }
 
+
     candidats.sort(
         (a, b) => a.score - b.score
     );
+
 
     return candidats[0].texte;
 }
@@ -147,19 +167,24 @@ function extraireInformations(mots) {
     const etage =
         trouverEtage(mots);
 
+
     const labelPorte =
         trouverMot(mots, "Porte");
+
 
     const labelRang =
         trouverMot(mots, "Rang");
 
+
     let labelNumero =
         trouverMot(mots, "Numéro");
+
 
     if (!labelNumero) {
         labelNumero =
             trouverMot(mots, "Numero");
     }
+
 
     if (!labelPorte) {
         throw new Error(
@@ -167,11 +192,13 @@ function extraireInformations(mots) {
         );
     }
 
+
     if (!labelRang) {
         throw new Error(
             "Libellé « Rang » introuvable."
         );
     }
+
 
     if (!labelNumero) {
         throw new Error(
@@ -187,31 +214,41 @@ function extraireInformations(mots) {
             "nombre"
         );
 
+
     const rang =
         trouverValeurSousLabel(
             mots,
             labelRang,
-            "lettre"
+            "rang"
         );
+
 
     const place =
         trouverValeurSousLabel(
             mots,
             labelNumero,
-            "nombre"
+            "place"
         );
 
 
     if (!porte) {
-        throw new Error("Porte introuvable.");
+        throw new Error(
+            "Porte introuvable."
+        );
     }
+
 
     if (!rang) {
-        throw new Error("Rang introuvable.");
+        throw new Error(
+            "Rang introuvable."
+        );
     }
 
+
     if (!place) {
-        throw new Error("Place introuvable.");
+        throw new Error(
+            "Place introuvable."
+        );
     }
 
 
@@ -238,27 +275,38 @@ async function analyserPDF(fichier) {
     const donnees =
         await fichier.arrayBuffer();
 
+
     const pdf =
         await pdfjsLib.getDocument({
             data: donnees
         }).promise;
 
+
     const page =
         await pdf.getPage(1);
+
 
     const contenu =
         await page.getTextContent();
 
+
     const mots =
         contenu.items
             .map(item => ({
-                texte: normaliser(item.str),
+                texte: normaliser(
+                    item.str
+                ),
                 x: item.transform[4],
                 y: item.transform[5]
             }))
-            .filter(mot => mot.texte);
+            .filter(
+                mot => mot.texte
+            );
 
-    return extraireInformations(mots);
+
+    return extraireInformations(
+        mots
+    );
 }
 
 
@@ -277,18 +325,22 @@ traiter.addEventListener(
 
         traiter.disabled = true;
 
+
         const total =
             fichiers.files.length;
 
+
         let nbOK = 0;
         let nbErreurs = 0;
+
 
         const erreurs = [];
 
 
         try {
 
-            const zip = new JSZip();
+            const zip =
+                new JSZip();
 
 
             for (
@@ -309,10 +361,13 @@ traiter.addEventListener(
                 try {
 
                     const infos =
-                        await analyserPDF(fichier);
+                        await analyserPDF(
+                            fichier
+                        );
 
 
                     if (!infos.etage) {
+
                         throw new Error(
                             "Étage introuvable."
                         );
@@ -348,10 +403,12 @@ traiter.addEventListener(
 
                     nbOK++;
 
+
                 }
                 catch (erreur) {
 
                     nbErreurs++;
+
 
                     erreurs.push(
                         `${fichier.name} : ${erreur.message}`
@@ -396,10 +453,13 @@ traiter.addEventListener(
                 const lien =
                     document.createElement("a");
 
+
                 lien.href = url;
+
 
                 lien.download =
                     "Billets-renommes.zip";
+
 
                 lien.textContent =
                     "Télécharger le ZIP";
@@ -408,20 +468,26 @@ traiter.addEventListener(
                 lien.style.display =
                     "inline-block";
 
+
                 lien.style.marginTop =
                     "15px";
+
 
                 lien.style.padding =
                     "12px 20px";
 
+
                 lien.style.background =
                     "#222";
+
 
                 lien.style.color =
                     "white";
 
+
                 lien.style.textDecoration =
                     "none";
+
 
                 lien.style.borderRadius =
                     "6px";
@@ -431,15 +497,18 @@ traiter.addEventListener(
                     document.createElement("br")
                 );
 
+
                 resultat.appendChild(
                     lien
                 );
             }
 
+
         }
         catch (erreur) {
 
             console.error(erreur);
+
 
             resultat.innerHTML =
                 "<strong>Erreur :</strong><br>" +
