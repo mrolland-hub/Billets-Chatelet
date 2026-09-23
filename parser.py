@@ -22,7 +22,7 @@ def _extraire_zone(page):
     Recherche l'un des six étages possibles.
     """
 
-    texte = page.get_text("text")
+    texte = _normaliser(page.get_text("text"))
 
     for etage in ETAGES:
         if re.search(
@@ -35,132 +35,173 @@ def _extraire_zone(page):
     raise ValueError("Étage introuvable.")
 
 
+def _recuperer_mots(page):
+    """
+    Récupère les mots avec leur position sur la page.
+
+    Chaque élément contient :
+        x0, y0, x1, y1, texte
+    """
+
+    mots = []
+
+    for mot in page.get_text("words"):
+        x0, y0, x1, y1, texte = mot[:5]
+
+        texte = _normaliser(texte)
+
+        if texte:
+            mots.append({
+                "x0": x0,
+                "y0": y0,
+                "x1": x1,
+                "y1": y1,
+                "x": (x0 + x1) / 2,
+                "y": (y0 + y1) / 2,
+                "texte": texte,
+            })
+
+    return mots
+
+
+def _trouver_mot(mots, recherche):
+    """
+    Trouve le mot correspondant à un intitulé.
+    """
+
+    recherche = recherche.lower()
+
+    for mot in mots:
+        if mot["texte"].lower() == recherche:
+            return mot
+
+    return None
+
+
+def _trouver_valeur_sous_label(
+    mots,
+    label,
+    type_valeur
+):
+    """
+    Cherche la valeur située sous un intitulé.
+
+    type_valeur :
+        "nombre" -> 11 ou 44
+        "lettre" -> A
+    """
+
+    candidats = []
+
+    # Centre horizontal du libellé
+    centre_label = label["x"]
+
+    for mot in mots:
+
+        # Il faut être sous le libellé
+        if mot["y"] <= label["y"]:
+            continue
+
+        # Distance verticale raisonnable
+        distance_y = mot["y"] - label["y"]
+
+        if distance_y > 100:
+            continue
+
+        texte = mot["texte"]
+
+        # Vérification du type de valeur
+        if type_valeur == "nombre":
+            if not re.fullmatch(r"\d+", texte):
+                continue
+
+        elif type_valeur == "lettre":
+            if not re.fullmatch(r"[A-Za-z]", texte):
+                continue
+
+        # Distance horizontale
+        distance_x = abs(mot["x"] - centre_label)
+
+        # On évite les valeurs trop éloignées
+        if distance_x > 100:
+            continue
+
+        # Score :
+        # on privilégie d'abord la proximité verticale,
+        # puis la proximité horizontale.
+        score = distance_y + distance_x * 0.5
+
+        candidats.append((score, mot))
+
+    if not candidats:
+        return None
+
+    candidats.sort(key=lambda x: x[0])
+
+    return candidats[0][1]["texte"]
+
+
 def _extraire_porte_rang_place(page):
     """
-    Recherche les trois valeurs sous les intitulés :
+    Recherche :
 
-        Porte    Rang    Numéro
-        11       A       41
+        Porte       Rang       Numéro
+         11          A           44
 
-    Résultat :
-        porte = 11
-        rang = A
-        place = 41
+    en utilisant les positions des éléments sur le PDF.
     """
 
-    texte = page.get_text("text")
+    mots = _recuperer_mots(page)
 
-    lignes = [
-        _normaliser(ligne)
-        for ligne in texte.splitlines()
-        if _normaliser(ligne)
-    ]
+    label_porte = _trouver_mot(mots, "Porte")
+    label_rang = _trouver_mot(mots, "Rang")
+    label_numero = _trouver_mot(mots, "Numéro")
 
-    # ---------------------------------------------------------
-    # CAS PRINCIPAL
-    # ---------------------------------------------------------
-    # On cherche une ligne contenant Porte / Rang / Numéro,
-    # puis les lignes suivantes.
-    # ---------------------------------------------------------
+    # Certains PDF peuvent avoir "Numero" sans accent.
+    if label_numero is None:
+        label_numero = _trouver_mot(mots, "Numero")
 
-    for i, ligne in enumerate(lignes):
+    if label_porte is None:
+        raise ValueError("Libellé 'Porte' introuvable.")
 
-        ligne_min = ligne.lower()
+    if label_rang is None:
+        raise ValueError("Libellé 'Rang' introuvable.")
 
-        if (
-            "porte" in ligne_min
-            and "rang" in ligne_min
-            and "num" in ligne_min
-        ):
+    if label_numero is None:
+        raise ValueError("Libellé 'Numéro' introuvable.")
 
-            # On examine les 5 lignes suivantes.
-            for j in range(i + 1, min(i + 6, len(lignes))):
+    porte = _trouver_valeur_sous_label(
+        mots,
+        label_porte,
+        "nombre"
+    )
 
-                valeurs = lignes[j]
+    rang = _trouver_valeur_sous_label(
+        mots,
+        label_rang,
+        "lettre"
+    )
 
-                # Cas idéal : "11 A 41"
-                m = re.fullmatch(
-                    r"(\d+)\s+([A-Za-z])\s+(\d+)",
-                    valeurs
-                )
+    place = _trouver_valeur_sous_label(
+        mots,
+        label_numero,
+        "nombre"
+    )
 
-                if m:
-                    porte, rang, place = m.groups()
+    if porte is None:
+        raise ValueError("Porte introuvable.")
 
-                    return {
-                        "porte": porte,
-                        "rang": rang.upper(),
-                        "place": place,
-                    }
+    if rang is None:
+        raise ValueError("Rang introuvable.")
 
-    # ---------------------------------------------------------
-    # CAS où PyMuPDF sépare les valeurs
-    # ---------------------------------------------------------
-    #
-    # Exemple :
-    #
-    # Porte
-    # Rang
-    # Numéro
-    # 11
-    # A
-    # 41
-    #
-    # ---------------------------------------------------------
+    if place is None:
+        raise ValueError("Place introuvable.")
 
-    for i, ligne in enumerate(lignes):
-
-        if ligne.lower() == "porte":
-
-            for j in range(i + 1, min(i + 6, len(lignes))):
-
-                if lignes[j].lower() == "rang":
-
-                    for k in range(j + 1, min(j + 6, len(lignes))):
-
-                        if "num" in lignes[k].lower():
-
-                            valeurs = []
-
-                            for n in range(
-                                k + 1,
-                                min(k + 7, len(lignes))
-                            ):
-                                valeur = lignes[n]
-
-                                if re.fullmatch(r"\d+", valeur):
-                                    valeurs.append(valeur)
-
-                                elif re.fullmatch(
-                                    r"[A-Za-z]",
-                                    valeur
-                                ):
-                                    valeurs.append(
-                                        valeur.upper()
-                                    )
-
-                            if len(valeurs) >= 3:
-
-                                # On vérifie bien :
-                                # nombre / lettre / nombre
-
-                                if (
-                                    re.fullmatch(r"\d+", valeurs[0])
-                                    and
-                                    re.fullmatch(
-                                        r"[A-Z]",
-                                        valeurs[1]
-                                    )
-                                    and
-                                    re.fullmatch(r"\d+", valeurs[2])
-                                ):
-                                    return {
-                                        "porte": valeurs[0],
-                                        "rang": valeurs[1],
-                                        "place": valeurs[2],
-                                    }
-
-    raise ValueError("Porte/Rang/Place introuvable.")
+    return {
+        "porte": porte,
+        "rang": rang.upper(),
+        "place": place,
+    }
 
 
 def lire_billet(pdf_path):
@@ -170,6 +211,7 @@ def lire_billet(pdf_path):
         page = doc[0]
 
         zone = _extraire_zone(page)
+
         infos = _extraire_porte_rang_place(page)
 
         return {
