@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Billets Châtelet</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 60px auto;
+            padding: 20px;
+            color: #222;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        .description {
+            color: #555;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .zone {
+            border: 2px dashed #aaa;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+        }
+
+        button:hover {
+            opacity: 0.85;
+        }
+
+        #resultat {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f5f5f5;
+            min-height: 30px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Renommage des billets</h1>
+
+    <div class="description">
+        Sélectionnez les fichiers PDF des billets à traiter.
+        Les fichiers seront traités directement sur votre ordinateur.
+    </div>
+
+    <div class="zone">
+
+        <input
+            type="file"
+            id="fichiers"
+            accept=".pdf"
+            multiple
+        >
+
+        <p id="nombre">
+            Aucun fichier sélectionné.
+        </p>
+
+    </div>
+
+    <button id="traiter">
+        Tester la lecture des billets
+    </button>
+
+    <div id="resultat">
+        En attente...
+    </div>
+
+
+    <!-- PDF.js -->
+    <script type="module">
+        import * as pdfjsLib from
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs";
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
+
+        window.pdfjsLib = pdfjsLib;
+    </script>
+
+
+    <!-- Notre application -->
+    <script src="app.js"></script>
+
+</body>
+</html>
