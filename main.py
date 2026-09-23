@@ -1,4 +1,3 @@
-
 import sys
 from pathlib import Path
 
@@ -23,54 +22,53 @@ class Fenetre(QWidget):
 
         self.setWindowTitle("Billets Châtelet – Renommage")
         self.resize(520, 320)
-
         self.setAcceptDrops(True)
 
         layout = QVBoxLayout(self)
 
         self.titre = QLabel("🎟️ Billets Châtelet")
         self.titre.setAlignment(Qt.AlignCenter)
-        self.titre.setStyleSheet("font-size:22px;font-weight:bold;")
+        self.titre.setStyleSheet("font-size:22px; font-weight:bold;")
 
         self.zone = QLabel(
-            "Glissez un dossier contenant les PDF ici\n\nou cliquez sur « Choisir un dossier »"
+            "Glissez un dossier contenant les PDF ici\n\n"
+            "ou cliquez sur « Choisir un dossier »"
         )
         self.zone.setAlignment(Qt.AlignCenter)
-        self.zone.setStyleSheet(
-            """
-            QLabel{
-                border:2px dashed #888;
-                border-radius:12px;
-                padding:25px;
-                background:#fafafa;
+        self.zone.setStyleSheet("""
+            QLabel {
+                border: 2px dashed #888;
+                border-radius: 12px;
+                padding: 25px;
+                background: #fafafa;
             }
-            """
-        )
+        """)
 
         self.barre = QProgressBar()
         self.barre.setValue(0)
 
         self.bouton = QPushButton("Choisir un dossier")
+        self.bouton.clicked.connect(self.choisir_dossier)
 
         layout.addWidget(self.titre)
         layout.addWidget(self.zone)
         layout.addWidget(self.barre)
         layout.addWidget(self.bouton)
 
-        self.bouton.clicked.connect(self.choisir_dossier)
+    # ---------- Glisser-déposer ----------
 
-   def dragEnterEvent(self, event):
-    if event.mimeData().hasUrls():
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            chemin = Path(event.mimeData().urls()[0].toLocalFile())
+            if chemin.is_dir():
+                event.acceptProposedAction()
+
+    def dropEvent(self, event):
         chemin = Path(event.mimeData().urls()[0].toLocalFile())
         if chemin.is_dir():
-            event.acceptProposedAction()
+            self.lancer(chemin)
 
-
-def dropEvent(self, event):
-    chemin = Path(event.mimeData().urls()[0].toLocalFile())
-
-    if chemin.is_dir():
-        self.lancer(chemin)
+    # ---------- Sélection du dossier ----------
 
     def choisir_dossier(self):
         dossier = QFileDialog.getExistingDirectory(
@@ -81,7 +79,11 @@ def dropEvent(self, event):
         if dossier:
             self.lancer(Path(dossier))
 
+    # ---------- Traitement ----------
+
     def lancer(self, dossier):
+        self.bouton.setEnabled(False)
+        self.barre.setValue(0)
         self.zone.setText(f"Traitement de :\n{dossier.name}")
 
         def progression(i, total):
@@ -95,19 +97,18 @@ def dropEvent(self, event):
                 callback_progress=progression
             )
 
-            self.zone.setText(
-                f"✅ Terminé\n\n{ok} billets renommés"
-            )
+            message = f"✅ Terminé\n\n{ok} billets renommés"
 
             if erreurs:
-                self.zone.setText(
-                    self.zone.text() + f"\n{erreurs} erreur(s)"
-                )
+                message += f"\n{erreurs} erreur(s)"
+
+            self.zone.setText(message)
 
             QMessageBox.information(
                 self,
-                "Terminé",
-                f"{ok} billets renommés.\n\nRésultat :\n{sortie}"
+                "Traitement terminé",
+                f"{ok} billets renommés.\n\n"
+                f"Dossier créé :\n{sortie}"
             )
 
         except Exception as e:
@@ -117,10 +118,16 @@ def dropEvent(self, event):
                 str(e)
             )
 
+        finally:
+            self.bouton.setEnabled(True)
 
-app = QApplication(sys.argv)
 
-f = Fenetre()
-f.show()
+def main():
+    app = QApplication(sys.argv)
+    fenetre = Fenetre()
+    fenetre.show()
+    sys.exit(app.exec())
 
-sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
