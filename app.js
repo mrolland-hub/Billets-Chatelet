@@ -1,3 +1,4 @@
+
 const fichiers = document.getElementById("fichiers");
 const nombre = document.getElementById("nombre");
 const traiter = document.getElementById("traiter");
@@ -14,130 +15,200 @@ const ETAGES = [
 
 fichiers.addEventListener("change", () => {
     const total = fichiers.files.length;
-    nombre.textContent =
-        total === 0
-            ? "Aucun fichier sélectionné."
-            : `${total} fichier${total > 1 ? "s" : ""} sélectionné${total > 1 ? "s" : ""}.`;
+
+    if (total === 0) {
+        nombre.textContent = "Aucun fichier sélectionné.";
+    } else if (total === 1) {
+        nombre.textContent = "1 fichier sélectionné.";
+    } else {
+        nombre.textContent = `${total} fichiers sélectionnés.`;
+    }
 });
 
-function normaliser(t) {
-    return t.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+function normaliser(texte) {
+    return texte
+        .replace(/\u00a0/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
-function nomSecurise(nom) {
-    return nom.replace(/[<>:"/\\|?*]/g, "_");
+function trouverEtage(mots) {
+    const texte = mots.map(m => m.texte).join(" ").toLowerCase();
+
+    return ETAGES.find(e =>
+        texte.includes(e.toLowerCase())
+    );
 }
 
-function regrouperParLignes(items) {
-    const lignes = [];
-    const tolerance = 2;
+function trouverMot(mots, recherche) {
+    return mots.find(
+        m => m.texte.toLowerCase() === recherche.toLowerCase()
+    );
+}
 
-    const tries = [...items].sort((a, b) => b.y - a.y);
+function trouverValeurSousLabel(mots, label, type) {
 
-    for (const item of tries) {
-        let ligne = lignes.find(l => Math.abs(l.y - item.y) <= tolerance);
+    const candidats = [];
 
-        if (!ligne) {
-            ligne = { y: item.y, mots: [] };
-            lignes.push(ligne);
+    for (const mot of mots) {
+
+        // Les valeurs sont sous le libellé
+        if (mot.y >= label.y) continue;
+
+        const distanceY = label.y - mot.y;
+        const distanceX = Math.abs(mot.x - label.x);
+
+        if (distanceY > 100) continue;
+        if (distanceX > 100) continue;
+
+        const texte = mot.texte;
+
+        if (type === "porte") {
+
+            if (!/^\d+$/.test(texte)) continue;
+
+            const n = Number(texte);
+
+            if (n < 1 || n > 23) continue;
         }
 
-        ligne.mots.push(item);
+        if (type === "rang") {
+
+            if (!/^[A-Za-z]{1,2}$/.test(texte))
+                continue;
+        }
+
+        if (type === "place") {
+
+            if (!/^\d+[A-Za-z]?$/.test(texte))
+                continue;
+        }
+
+        const score =
+            distanceY + distanceX * 0.5;
+
+        candidats.push({ score, texte });
     }
 
-    lignes.sort((a, b) => b.y - a.y);
+    if (candidats.length === 0)
+        return null;
 
-    for (const ligne of lignes) {
-        ligne.mots.sort((a, b) => a.x - b.x);
-    }
+    candidats.sort(
+        (a, b) => a.score - b.score
+    );
 
-    return lignes;
+    return candidats[0].texte;
 }
 
-function extraireInformations(items) {
-
-    const texteComplet = items.map(i => i.texte).join(" ");
+function extraireInformations(mots) {
 
     const etage =
-        ETAGES.find(e =>
-            texteComplet.toLowerCase().includes(e.toLowerCase())
+        trouverEtage(mots);
+
+    const labelPorte =
+        trouverMot(mots, "Porte");
+
+    const labelRang =
+        trouverMot(mots, "Rang");
+
+    let labelNumero =
+        trouverMot(mots, "Numéro");
+
+    if (!labelNumero) {
+        labelNumero =
+            trouverMot(mots, "Numero");
+    }
+
+    if (!labelPorte)
+        throw new Error("Libellé 'Porte' introuvable.");
+
+    if (!labelRang)
+        throw new Error("Libellé 'Rang' introuvable.");
+
+    if (!labelNumero)
+        throw new Error("Libellé 'Numéro' introuvable.");
+
+    const porte =
+        trouverValeurSousLabel(
+            mots,
+            labelPorte,
+            "porte"
         );
 
-    if (!etage) {
-        throw new Error("Étage introuvable.");
-    }
+    const rang =
+        trouverValeurSousLabel(
+            mots,
+            labelRang,
+            "rang"
+        );
 
-    const lignes = regrouperParLignes(items);
+    const place =
+        trouverValeurSousLabel(
+            mots,
+            labelNumero,
+            "place"
+        );
 
-    const index = lignes.findIndex(l => {
-        const texte = l.mots.map(m => m.texte).join(" ");
-        return texte.includes("Porte")
-            && texte.includes("Rang")
-            && texte.includes("Num");
-    });
+    if (!porte)
+        throw new Error("Porte introuvable.");
 
-    if (index === -1) {
-        throw new Error("Ligne Porte/Rang/Numéro introuvable.");
-    }
+    if (!rang)
+        throw new Error("Rang introuvable.");
 
-    const valeurs = lignes[index + 1];
-
-    if (!valeurs || valeurs.mots.length < 3) {
-        throw new Error("Valeurs Porte/Rang/Place introuvables.");
-    }
-
-    const [v1, v2, v3] = valeurs.mots.map(m => m.texte);
-
-    if (!/^\d+$/.test(v1) || Number(v1) > 23) {
-        throw new Error(`Porte invalide : ${v1}`);
-    }
-
-    if (!/^[A-Za-z]{1,2}$/.test(v2)) {
-        throw new Error(`Rang invalide : ${v2}`);
-    }
-
-    if (!/^\d+[A-Za-z]?$/.test(v3)) {
-        throw new Error(`Place invalide : ${v3}`);
-    }
+    if (!place)
+        throw new Error("Place introuvable.");
 
     return {
         etage,
-        porte: v1,
-        rang: v2.toUpperCase(),
-        place: v3
+        porte,
+        rang: rang.toUpperCase(),
+        place
     };
+}
+
+function nomSecurise(nom) {
+    return nom.replace(
+        /[<>:"/\\|?*]/g,
+        "_"
+    );
 }
 
 async function analyserPDF(fichier) {
 
-    const buffer = await fichier.arrayBuffer();
+    const donnees =
+        await fichier.arrayBuffer();
 
-    const pdf = await pdfjsLib.getDocument({
-        data: buffer
-    }).promise;
+    const pdf =
+        await pdfjsLib.getDocument({
+            data: donnees
+        }).promise;
 
-    const page = await pdf.getPage(1);
+    const page =
+        await pdf.getPage(1);
 
-    const contenu = await page.getTextContent();
+    const contenu =
+        await page.getTextContent();
 
-    const items = contenu.items
-        .map(i => ({
-            texte: normaliser(i.str),
-            x: i.transform[4],
-            y: i.transform[5]
-        }))
-        .filter(i => i.texte);
+    const mots =
+        contenu.items
+            .map(item => ({
+                texte: normaliser(item.str),
+                x: item.transform[4],
+                y: item.transform[5]
+            }))
+            .filter(m => m.texte);
 
     return {
-        infos: extraireInformations(items),
-        buffer
+        infos: extraireInformations(mots),
+        donnees
     };
 }
 
 traiter.addEventListener("click", async () => {
 
-    if (!fichiers.files.length) {
-        resultat.textContent = "Veuillez sélectionner au moins un PDF.";
+    if (fichiers.files.length === 0) {
+        resultat.textContent =
+            "Veuillez sélectionner au moins un PDF.";
         return;
     }
 
@@ -145,9 +216,8 @@ traiter.addEventListener("click", async () => {
 
     const zip = new JSZip();
 
+    let nbOK = 0;
     const erreurs = [];
-
-    let ok = 0;
 
     try {
 
@@ -160,39 +230,81 @@ traiter.addEventListener("click", async () => {
 
             try {
 
-                const { infos, buffer } = await analyserPDF(fichier);
+                const { infos, donnees } =
+                    await analyserPDF(fichier);
+
+                if (!infos.etage)
+                    throw new Error("Étage introuvable.");
 
                 const chemin =
                     `${nomSecurise(infos.etage)}/` +
                     `Rang ${infos.rang}/` +
                     `${nomSecurise(infos.etage)}_Porte_${infos.porte}_Rang_${infos.rang}_Place_${infos.place}.pdf`;
 
-                zip.file(chemin, buffer);
+                zip.file(
+                    chemin,
+                    donnees
+                );
 
-                ok++;
+                nbOK++;
 
             } catch (e) {
 
-                erreurs.push(`${fichier.name} : ${e.message}`);
+                erreurs.push(
+                    `${fichier.name} : ${e.message}`
+                );
             }
         }
 
         if (erreurs.length) {
-            zip.file("erreurs.txt", erreurs.join("\n"));
+
+            zip.file(
+                "erreurs.txt",
+                erreurs.join("\n")
+            );
         }
 
-        const blob = await zip.generateAsync({ type: "blob" });
-
-        const lien = document.createElement("a");
-        lien.href = URL.createObjectURL(blob);
-        lien.download = "Billets-renommes.zip";
-        lien.textContent = "Télécharger le ZIP";
-        lien.style.display = "inline-block";
-        lien.style.marginTop = "15px";
+        const blob =
+            await zip.generateAsync({
+                type: "blob"
+            });
 
         resultat.innerHTML =
-            `<strong>${ok}</strong> billet(s) traité(s)<br>` +
+            `<strong>${nbOK}</strong> billet(s) traité(s)<br>` +
             `<strong>${erreurs.length}</strong> erreur(s)<br><br>`;
+
+        const lien =
+            document.createElement("a");
+
+        lien.href =
+            URL.createObjectURL(blob);
+
+        lien.download =
+            "Billets-renommes.zip";
+
+        lien.textContent =
+            "Télécharger le ZIP";
+
+        lien.style.display =
+            "inline-block";
+
+        lien.style.marginTop =
+            "15px";
+
+        lien.style.padding =
+            "12px 20px";
+
+        lien.style.background =
+            "#222";
+
+        lien.style.color =
+            "white";
+
+        lien.style.textDecoration =
+            "none";
+
+        lien.style.borderRadius =
+            "6px";
 
         resultat.appendChild(lien);
 
