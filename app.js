@@ -35,14 +35,14 @@ function normaliser(texte) {
 function trouverEtage(mots) {
     const texte = mots.map(m => m.texte).join(" ").toLowerCase();
 
-    return ETAGES.find(e =>
-        texte.includes(e.toLowerCase())
+    return ETAGES.find(etage =>
+        texte.includes(etage.toLowerCase())
     );
 }
 
 function trouverMot(mots, recherche) {
     return mots.find(
-        m => m.texte.toLowerCase() === recherche.toLowerCase()
+        mot => mot.texte.toLowerCase() === recherche.toLowerCase()
     );
 }
 
@@ -63,21 +63,26 @@ function trouverValeurSousLabel(mots, label, type) {
 
         const texte = mot.texte;
 
+        // PORTE : entier de 1 à 23
         if (type === "porte") {
 
-            if (!/^\d+$/.test(texte)) continue;
+            if (!/^\d+$/.test(texte))
+                continue;
 
             const n = Number(texte);
 
-            if (n < 1 || n > 23) continue;
+            if (n < 1 || n > 23)
+                continue;
         }
 
+        // RANG : 1 ou 2 lettres
         if (type === "rang") {
 
             if (!/^[A-Za-z]{1,2}$/.test(texte))
                 continue;
         }
 
+        // PLACE : nombre éventuellement suivi d'une lettre
         if (type === "place") {
 
             if (!/^\d+[A-Za-z]?$/.test(texte))
@@ -85,9 +90,13 @@ function trouverValeurSousLabel(mots, label, type) {
         }
 
         const score =
-            distanceY + distanceX * 0.5;
+            distanceY +
+            distanceX * 0.5;
 
-        candidats.push({ score, texte });
+        candidats.push({
+            score,
+            texte
+        });
     }
 
     if (candidats.length === 0)
