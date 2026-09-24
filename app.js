@@ -3,7 +3,6 @@ const nombre = document.getElementById("nombre");
 const traiter = document.getElementById("traiter");
 const resultat = document.getElementById("resultat");
 
-
 const ETAGES = [
     "Orchestre",
     "Corbeille",
@@ -13,637 +12,192 @@ const ETAGES = [
     "Amphithéâtre Haut"
 ];
 
-
 fichiers.addEventListener("change", () => {
-
     const total = fichiers.files.length;
-
-    if (total === 0) {
-        nombre.textContent = "Aucun fichier sélectionné.";
-    }
-    else if (total === 1) {
-        nombre.textContent = "1 fichier sélectionné.";
-    }
-    else {
-        nombre.textContent =
-            total + " fichiers sélectionnés.";
-    }
+    nombre.textContent =
+        total === 0
+            ? "Aucun fichier sélectionné."
+            : `${total} fichier${total > 1 ? "s" : ""} sélectionné${total > 1 ? "s" : ""}.`;
 });
 
-
-function normaliser(texte) {
-
-    return texte
-        .replace(/\u00a0/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+function normaliser(t) {
+    return t.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function nomSecurise(nom) {
+    return nom.replace(/[<>:"/\\|?*]/g, "_");
+}
 
-function trouverEtage(mots) {
+function regrouperParLignes(items) {
+    const lignes = [];
+    const tolerance = 2;
 
-    const texte = mots
-        .map(mot => mot.texte)
-        .join(" ");
+    const tries = [...items].sort((a, b) => b.y - a.y);
 
-    const texteNormalise =
-        normaliser(texte).toLowerCase();
+    for (const item of tries) {
+        let ligne = lignes.find(l => Math.abs(l.y - item.y) <= tolerance);
 
-    for (const etage of ETAGES) {
-
-        if (
-            texteNormalise.includes(
-                etage.toLowerCase()
-            )
-        ) {
-            return etage;
+        if (!ligne) {
+            ligne = { y: item.y, mots: [] };
+            lignes.push(ligne);
         }
+
+        ligne.mots.push(item);
     }
 
-    return null;
-}
+    lignes.sort((a, b) => b.y - a.y);
 
-
-function trouverMot(mots, recherche) {
-
-    const rechercheMin =
-        recherche.toLowerCase();
-
-    return mots.find(
-        mot =>
-            mot.texte.toLowerCase() ===
-            rechercheMin
-    );
-}
-
-
-function trouverValeurSousLabel(
-    mots,
-    label,
-    type
-) {
-
-    const candidats = [];
-
-    for (const mot of mots) {
-
-        /*
-         * Dans les coordonnées PDF utilisées ici,
-         * une valeur située sous le libellé possède
-         * une coordonnée Y plus petite.
-         */
-
-        if (mot.y >= label.y) {
-            continue;
-        }
-
-
-        const distanceY =
-            label.y - mot.y;
-
-
-        /*
-         * On limite la recherche verticalement
-         * pour éviter de prendre un autre texte
-         * éloigné du champ.
-         */
-
-        if (distanceY > 100) {
-            continue;
-        }
-
-
-        const distanceX =
-            Math.abs(mot.x - label.x);
-
-
-        /*
-         * Même principe horizontalement.
-         */
-
-        if (distanceX > 100) {
-            continue;
-        }
-
-
-        const texte =
-            mot.texte;
-
-
-        /*
-         * PORTE
-         *
-         * Nombre entier compris entre 1 et 23.
-         */
-
-        if (type === "porte") {
-
-            if (
-                !/^\d+$/.test(texte)
-            ) {
-                continue;
-            }
-
-            const valeur =
-                Number(texte);
-
-            if (
-                valeur < 1 ||
-                valeur > 23
-            ) {
-                continue;
-            }
-        }
-
-
-        /*
-         * RANG
-         *
-         * Une ou deux lettres maximum.
-         *
-         * Exemples :
-         * A
-         * B
-         * LG
-         */
-
-        if (type === "rang") {
-
-            if (
-                !/^[A-Za-z]{1,2}$/.test(texte)
-            ) {
-                continue;
-            }
-        }
-
-
-        /*
-         * PLACE
-         *
-         * Un ou plusieurs chiffres,
-         * éventuellement suivis d'une lettre.
-         *
-         * Exemples :
-         * 16
-         * 16A
-         * 125
-         * 125B
-         */
-
-        if (type === "place") {
-
-            if (
-                !/^\d+[A-Za-z]?$/.test(texte)
-            ) {
-                continue;
-            }
-        }
-
-
-        /*
-         * Score :
-         *
-         * On privilégie d'abord la proximité
-         * verticale, puis la proximité horizontale.
-         */
-
-        const score =
-            distanceY +
-            distanceX * 0.5;
-
-
-        candidats.push({
-            score,
-            texte
-        });
+    for (const ligne of lignes) {
+        ligne.mots.sort((a, b) => a.x - b.x);
     }
 
-
-    if (candidats.length === 0) {
-        return null;
-    }
-
-
-    candidats.sort(
-        (a, b) =>
-            a.score - b.score
-    );
-
-
-    return candidats[0].texte;
+    return lignes;
 }
 
+function extraireInformations(items) {
 
-function extraireInformations(mots) {
+    const texteComplet = items.map(i => i.texte).join(" ");
 
     const etage =
-        trouverEtage(mots);
-
-
-    const labelPorte =
-        trouverMot(
-            mots,
-            "Porte"
+        ETAGES.find(e =>
+            texteComplet.toLowerCase().includes(e.toLowerCase())
         );
 
-
-    const labelRang =
-        trouverMot(
-            mots,
-            "Rang"
-        );
-
-
-    let labelNumero =
-        trouverMot(
-            mots,
-            "Numéro"
-        );
-
-
-    if (!labelNumero) {
-
-        labelNumero =
-            trouverMot(
-                mots,
-                "Numero"
-            );
+    if (!etage) {
+        throw new Error("Étage introuvable.");
     }
 
+    const lignes = regrouperParLignes(items);
 
-    if (!labelPorte) {
+    const index = lignes.findIndex(l => {
+        const texte = l.mots.map(m => m.texte).join(" ");
+        return texte.includes("Porte")
+            && texte.includes("Rang")
+            && texte.includes("Num");
+    });
 
-        throw new Error(
-            "Libellé « Porte » introuvable."
-        );
+    if (index === -1) {
+        throw new Error("Ligne Porte/Rang/Numéro introuvable.");
     }
 
+    const valeurs = lignes[index + 1];
 
-    if (!labelRang) {
-
-        throw new Error(
-            "Libellé « Rang » introuvable."
-        );
+    if (!valeurs || valeurs.mots.length < 3) {
+        throw new Error("Valeurs Porte/Rang/Place introuvables.");
     }
 
+    const [v1, v2, v3] = valeurs.mots.map(m => m.texte);
 
-    if (!labelNumero) {
-
-        throw new Error(
-            "Libellé « Numéro » introuvable."
-        );
+    if (!/^\d+$/.test(v1) || Number(v1) > 23) {
+        throw new Error(`Porte invalide : ${v1}`);
     }
 
-
-    const porte =
-        trouverValeurSousLabel(
-            mots,
-            labelPorte,
-            "porte"
-        );
-
-
-    const rang =
-        trouverValeurSousLabel(
-            mots,
-            labelRang,
-            "rang"
-        );
-
-
-    const place =
-        trouverValeurSousLabel(
-            mots,
-            labelNumero,
-            "place"
-        );
-
-
-    if (!porte) {
-
-        throw new Error(
-            "Porte introuvable."
-        );
+    if (!/^[A-Za-z]{1,2}$/.test(v2)) {
+        throw new Error(`Rang invalide : ${v2}`);
     }
 
-
-    if (!rang) {
-
-        throw new Error(
-            "Rang introuvable."
-        );
+    if (!/^\d+[A-Za-z]?$/.test(v3)) {
+        throw new Error(`Place invalide : ${v3}`);
     }
-
-
-    if (!place) {
-
-        throw new Error(
-            "Place introuvable."
-        );
-    }
-
 
     return {
-
         etage,
-
-        porte,
-
-        rang:
-            rang.toUpperCase(),
-
-        place
+        porte: v1,
+        rang: v2.toUpperCase(),
+        place: v3
     };
 }
 
-
-function nomSecurise(nom) {
-
-    return nom.replace(
-        /[<>:"/\\|?*]/g,
-        "_"
-    );
-}
-
-
 async function analyserPDF(fichier) {
 
-    const donnees =
-        await fichier.arrayBuffer();
+    const buffer = await fichier.arrayBuffer();
 
+    const pdf = await pdfjsLib.getDocument({
+        data: buffer
+    }).promise;
 
-    const pdf =
-        await pdfjsLib.getDocument({
-            data: donnees
-        }).promise;
+    const page = await pdf.getPage(1);
 
+    const contenu = await page.getTextContent();
 
-    const page =
-        await pdf.getPage(1);
+    const items = contenu.items
+        .map(i => ({
+            texte: normaliser(i.str),
+            x: i.transform[4],
+            y: i.transform[5]
+        }))
+        .filter(i => i.texte);
 
-
-    const contenu =
-        await page.getTextContent();
-
-
-    const mots =
-        contenu.items
-
-            .map(item => ({
-
-                texte:
-                    normaliser(
-                        item.str
-                    ),
-
-                x:
-                    item.transform[4],
-
-                y:
-                    item.transform[5]
-
-            }))
-
-            .filter(
-                mot =>
-                    mot.texte
-            );
-
-
-    return extraireInformations(
-        mots
-    );
+    return {
+        infos: extraireInformations(items),
+        buffer
+    };
 }
 
+traiter.addEventListener("click", async () => {
 
-traiter.addEventListener(
-    "click",
-    async () => {
+    if (!fichiers.files.length) {
+        resultat.textContent = "Veuillez sélectionner au moins un PDF.";
+        return;
+    }
 
-        if (
-            fichiers.files.length === 0
-        ) {
+    traiter.disabled = true;
 
-            resultat.textContent =
-                "Veuillez sélectionner au moins un PDF.";
+    const zip = new JSZip();
 
-            return;
-        }
+    const erreurs = [];
 
+    let ok = 0;
 
-        traiter.disabled = true;
+    try {
 
+        for (let i = 0; i < fichiers.files.length; i++) {
 
-        const total =
-            fichiers.files.length;
-
-
-        let nbOK = 0;
-
-        let nbErreurs = 0;
-
-
-        const erreurs = [];
-
-
-        try {
-
-            const zip =
-                new JSZip();
-
-
-            for (
-                let i = 0;
-                i < total;
-                i++
-            ) {
-
-                const fichier =
-                    fichiers.files[i];
-
-
-                resultat.innerHTML =
-
-                    `Analyse du billet ${i + 1} / ${total}<br>` +
-
-                    `<strong>${fichier.name}</strong>`;
-
-
-                try {
-
-                    const infos =
-                        await analyserPDF(
-                            fichier
-                        );
-
-
-                    if (!infos.etage) {
-
-                        throw new Error(
-                            "Étage introuvable."
-                        );
-                    }
-
-
-                    const dossier =
-
-                        `${nomSecurise(infos.etage)}/` +
-
-                        `Rang ${nomSecurise(infos.rang)}/`;
-
-
-                    const nom =
-
-                        `${nomSecurise(infos.etage)}` +
-
-                        `_Porte_${nomSecurise(infos.porte)}` +
-
-                        `_Rang_${nomSecurise(infos.rang)}` +
-
-                        `_Place_${nomSecurise(infos.place)}` +
-
-                        `.pdf`;
-
-
-                    const chemin =
-                        dossier + nom;
-
-
-                    const donnees =
-                        await fichier.arrayBuffer();
-
-
-                    zip.file(
-                        chemin,
-                        donnees
-                    );
-
-
-                    nbOK++;
-
-                }
-                catch (erreur) {
-
-                    nbErreurs++;
-
-
-                    erreurs.push(
-
-                        `${fichier.name} : ${erreur.message}`
-
-                    );
-                }
-            }
-
+            const fichier = fichiers.files[i];
 
             resultat.innerHTML =
+                `Analyse ${i + 1}/${fichiers.files.length}<br><strong>${fichier.name}</strong>`;
 
-                `Traitement terminé.<br><br>` +
+            try {
 
-                `<strong>${nbOK}</strong> billet(s) traité(s).<br>` +
+                const { infos, buffer } = await analyserPDF(fichier);
 
-                `<strong>${nbErreurs}</strong> erreur(s).`;
+                const chemin =
+                    `${nomSecurise(infos.etage)}/` +
+                    `Rang ${infos.rang}/` +
+                    `${nomSecurise(infos.etage)}_Porte_${infos.porte}_Rang_${infos.rang}_Place_${infos.place}.pdf`;
 
+                zip.file(chemin, buffer);
 
-            if (
-                erreurs.length > 0
-            ) {
+                ok++;
 
-                zip.file(
-                    "erreurs.txt",
-                    erreurs.join("\n")
-                );
+            } catch (e) {
+
+                erreurs.push(`${fichier.name} : ${e.message}`);
             }
-
-
-            if (nbOK > 0) {
-
-                resultat.innerHTML +=
-                    "<br><br>Création du fichier ZIP...";
-
-
-                const contenuZIP =
-                    await zip.generateAsync({
-                        type: "blob"
-                    });
-
-
-                const url =
-                    URL.createObjectURL(
-                        contenuZIP
-                    );
-
-
-                const lien =
-                    document.createElement("a");
-
-
-                lien.href =
-                    url;
-
-
-                lien.download =
-                    "Billets-renommes.zip";
-
-
-                lien.textContent =
-                    "Télécharger le ZIP";
-
-
-                lien.style.display =
-                    "inline-block";
-
-
-                lien.style.marginTop =
-                    "15px";
-
-
-                lien.style.padding =
-                    "12px 20px";
-
-
-                lien.style.background =
-                    "#222";
-
-
-                lien.style.color =
-                    "white";
-
-
-                lien.style.textDecoration =
-                    "none";
-
-
-                lien.style.borderRadius =
-                    "6px";
-
-
-                resultat.appendChild(
-                    document.createElement("br")
-                );
-
-
-                resultat.appendChild(
-                    lien
-                );
-            }
-
-        }
-        catch (erreur) {
-
-            console.error(
-                erreur
-            );
-
-
-            resultat.innerHTML =
-
-                "<strong>Erreur :</strong><br>" +
-
-                erreur.message;
         }
 
+        if (erreurs.length) {
+            zip.file("erreurs.txt", erreurs.join("\n"));
+        }
+
+        const blob = await zip.generateAsync({ type: "blob" });
+
+        const lien = document.createElement("a");
+        lien.href = URL.createObjectURL(blob);
+        lien.download = "Billets-renommes.zip";
+        lien.textContent = "Télécharger le ZIP";
+        lien.style.display = "inline-block";
+        lien.style.marginTop = "15px";
+
+        resultat.innerHTML =
+            `<strong>${ok}</strong> billet(s) traité(s)<br>` +
+            `<strong>${erreurs.length}</strong> erreur(s)<br><br>`;
+
+        resultat.appendChild(lien);
+
+    } finally {
 
         traiter.disabled = false;
     }
-);
+});
