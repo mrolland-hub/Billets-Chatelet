@@ -207,10 +207,13 @@ return nom.replace(/[<>:"/\\|?*]/g,"_");
 
 async function analyserPDF(fichier){
 
-const donnees=await fichier.arrayBuffer();
+const donnees = await fichier.arrayBuffer();
 
-const pdf=await pdfjsLib.getDocument({
-data:donnees
+// Copie pour PDF.js afin de conserver l'original pour le ZIP
+const donneesPDF = donnees.slice(0);
+
+const pdf = await pdfjsLib.getDocument({
+    data: donneesPDF
 }).promise;
 
 const page=await pdf.getPage(1);
