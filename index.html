@@ -92,7 +92,7 @@ button:disabled{
 
 <div id="dropzone" class="dropzone">
     <strong>Déposez vos PDF ici</strong><br>
-    ou cliquez pour les sélectionner.
+    ou cliquez sur le bouton ci-dessous.
 </div>
 
 <input
@@ -100,7 +100,11 @@ id="fichiers"
 type="file"
 accept=".pdf,application/pdf"
 multiple
-hidden>
+style="display:none;">
+
+<button id="choisir" type="button">
+    Choisir des fichiers
+</button>
 
 <div id="nombre">
 Aucun fichier sélectionné.
