@@ -3,6 +3,7 @@ const nombre=document.getElementById("nombre");
 const traiter=document.getElementById("traiter");
 const resultat=document.getElementById("resultat");
 const dropzone=document.getElementById("dropzone");
+const choisir = document.getElementById("choisir");
 
 const ETAGES=[
 "Orchestre",
@@ -28,7 +29,8 @@ nombre.textContent=`${total} fichiers sélectionnés.`;
 
 fichiers.addEventListener("change",mettreAJourNombre);
 
-dropzone.addEventListener("click",()=>fichiers.click());
+dropzone.addEventListener("click", () => fichiers.click());
+choisir.addEventListener("click", () => fichiers.click());
 
 ["dragenter","dragover"].forEach(evt=>{
 
